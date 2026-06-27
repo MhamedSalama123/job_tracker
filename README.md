@@ -1,4 +1,4 @@
-# KarriereScout
+# KarriereScout 
 
 A self-hosted job-hunting dashboard that automatically scrapes **StepStone**, **Indeed**, and **LinkedIn** for matching roles, scores them against your résumé, and tracks your application pipeline — all from a local web UI.
 
