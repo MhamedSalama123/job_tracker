@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Tracker</title>
+<script>
+  // Apply saved theme before paint to avoid a flash of the wrong theme.
+  (function () {
+    var t = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root, :root[data-theme="dark"] {
+    --bg: #0e0e0e;
+    --surface: #161616;
+    --surface2: #1f1f1f;
+    --border: #2a2a2a;
+    --border-hover: #3a3a3a;
+    --accent: #e8ff47;
+    --accent-dim: rgba(232,255,71,0.12);
+    --accent-text: #000;
+    --text: #e8e8e8;
+    --text-dim: #666;
+    --text-mid: #999;
+    --green: #4ade80;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --orange: #fb923c;
+    --overlay: rgba(255,255,255,0.03);
+    --bar-bg: #232323;
+    --map-stroke: #0f0f0f;
+    --sidebar-w: 300px;
+    color-scheme: dark;
+  }
+
+  :root[data-theme="light"] {
+    --bg: #e9ecf1;
+    --surface: #ffffff;
+    --surface2: #f1f3f6;
+    --border: #d7dbe0;
+    --border-hover: #b6bcc5;
+    --accent: #6b7a00;
+    --accent-dim: rgba(107,122,0,0.12);
+    --accent-text: #ffffff;
+    --text: #1c2024;
+    --text-dim: #8a9099;
+    --text-mid: #5a6066;
+    --green: #16a34a;
+    --red: #dc2626;
+    --blue: #2563eb;
+    --orange: #ea580c;
+    --overlay: rgba(0,0,0,0.03);
+    --bar-bg: #e2e5ea;
+    --map-stroke: #ffffff;
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    padding-right: var(--sidebar-w);
+    transition: padding-right 0.2s ease;
+  }
+
+  body.sidebar-collapsed {
+    padding-right: 0;
+  }
+
+  /* ── header ───────────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .last-run {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .btn-refresh {
+    background: var(--accent);
+    color: var(--accent-text);
+    border: none;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: opacity 0.15s;
+  }
+  .btn-refresh:hover { opacity: 0.85; }
+  .btn-refresh.loading { opacity: 0.6; cursor: not-allowed; }
+
+  .btn-scan-control {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+  }
+  .btn-scan-control:hover { color: var(--text); border-color: var(--border-hover); }
+  .btn-scan-control.btn-stop:hover { color: #e05c5c; border-color: rgba(224,92,92,0.5); }
+  .btn-scan-control.btn-pause:hover { color: var(--accent); border-color: rgba(232,255,71,0.4); }
+  .btn-scan-control.active { color: var(--accent); border-color: rgba(232,255,71,0.4); background: var(--accent-dim); }
+  .scan-controls { display: none; gap: 8px; }
+  .scan-controls.visible { display: flex; }
+
+  /* ── status bar ───────────────────────────────────────────── */
+  .notifications {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    overflow-x: auto;
+    overflow-y: auto;
+    min-height: 38px;
+    max-height: 38px;
+    transition: max-height 0.15s ease;
+    position: sticky;
+    top: 57px;
+    z-index: 99;
+  }
+  .notifications.has-expanded {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    max-height: 220px;
+  }
+
+  .notif-label { color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; flex-shrink: 0; }
+  .notif-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dot-green { background: var(--green); }
+  .dot-red { background: var(--red); }
+  .dot-gray { background: var(--text-dim); }
+  .dot-yellow { background: #e0a82e; }
+  .notif-item.success { color: var(--green); }
+  .notif-item.error { color: var(--red); }
+  .notif-item.info { color: var(--text-mid); }
+  .notif-summary { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .notif-summary:hover { color: var(--text-mid); }
+  .notif-toggle { color: var(--text-dim); font-size: 9px; }
+  .notif-details { display: none; align-items: center; flex-wrap: wrap; gap: 12px 20px; width: 100%; }
+  .notif-details.expanded { display: flex; }
+
+  @keyframes dotPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+  .dot-pulse { animation: dotPulse 1s ease-in-out infinite; }
+
+  /* ── tabs ─────────────────────────────────────────────────── */
+  .tabs {
+    display: flex;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    gap: 2px;
+    position: sticky;
+    z-index: 98;
+  }
+
+  .tab {
+    padding: 12px 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text-dim);
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+  }
+  .tab:hover { color: var(--text-mid); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .tab-count {
+    background: var(--surface2);
+    color: var(--text-mid);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+  }
+  .tab.active .tab-count { background: var(--accent-dim); color: var(--accent); }
+
+  .type-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 24px;
+    margin-left: auto;
+  }
+  .type-filter span {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .type-filter select {
+    background: var(--surface2);
+    color: var(--text-mid);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .btn-bulk-ignore {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .btn-bulk-ignore:hover { color: var(--red); border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.08); }
+  .btn-bulk-ignore:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── job list ─────────────────────────────────────────────── */
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .job-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px 20px;
+    display: grid;
+    gap: 10px;
+    transition: border-color 0.15s;
+    animation: fadeIn 0.2s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .job-card:hover { border-color: var(--border-hover); }
+  .job-card.applied { border-left: 3px solid var(--green); }
+  .job-card.ignored { opacity: 0.4; }
+
+  .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .job-title { font-size: 15px; font-weight: 500; color: var(--text); line-height: 1.3; }
+  .job-company { font-size: 13px; color: var(--text-mid); margin-top: 4px; }
+
+  .source-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border: 1px solid;
+  }
+  .source-linkedin  { color: #60a5fa; border-color: rgba(96,165,250,0.3);  background: rgba(96,165,250,0.08); }
+  .source-stepstone { color: #fb923c; border-color: rgba(251,146,60,0.3);  background: rgba(251,146,60,0.08); }
+  .source-indeed    { color: #4ade80; border-color: rgba(74,222,128,0.3);  background: rgba(74,222,128,0.08); }
+
+  .desc-unavailable { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); font-style: italic; }
+
+  .card-actions { display: flex; align-items: center; justify-content: space-between; }
+  .action-buttons { display: flex; gap: 8px; }
+
+  .btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid;
+    transition: all 0.15s;
+    letter-spacing: 0.04em;
+    background: transparent;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn-icon {
+    padding: 6px 10px;
+    font-size: 13px;
+    line-height: 1;
+    text-align: center;
+    color: var(--text-mid);
+  }
+  .btn-applying { color: #e0a82e; border-color: rgba(224,168,46,0.35); }
+  .btn-applying:hover, .btn-applying.active { background: rgba(224,168,46,0.12); border-color: #e0a82e; }
+  .btn-applied { color: var(--green); border-color: rgba(74,222,128,0.35); }
+  .btn-applied:hover, .btn-applied.active { background: rgba(74,222,128,0.12); border-color: var(--green); }
+  .btn-ignore { color: var(--text-dim); border-color: var(--border); }
+  .btn-ignore:hover, .btn-ignore.active { background: rgba(248,113,113,0.08); color: var(--red); border-color: rgba(248,113,113,0.35); }
+  .btn-open { color: var(--text-mid); border-color: var(--border); }
+  .btn-open:hover { color: var(--text); border-color: var(--border-hover); }
+  .btn-copy { color: var(--blue); border-color: rgba(96,165,250,0.35); }
+  .btn-copy:hover { background: rgba(96,165,250,0.12); border-color: var(--blue); }
+
+  .card-right { display: flex; align-items: center; gap: 12px; }
+  .found-at { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim); }
+
+  .empty { text-align: center; padding: 64px 24px; color: var(--text-dim); font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+  .empty-icon { font-size: 32px; margin-bottom: 12px; }
+
+  .type-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    white-space: nowrap;
+    border: 1px solid rgba(232,255,71,0.3);
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .type-badge.type-Vollzeit    { border-color: rgba(94,196,255,0.35); color: #5ec4ff; background: rgba(94,196,255,0.1); }
+  .type-badge.type-Werkstudent { border-color: rgba(122,224,150,0.35); color: #7ae096; background: rgba(122,224,150,0.1); }
+  .type-badge.type-Masterarbeit{ border-color: rgba(224,168,46,0.4); color: #e0a82e; background: rgba(224,168,46,0.1); }
+  .type-badge.type-Praktikum   { border-color: rgba(224,122,224,0.35); color: #e07ae0; background: rgba(224,122,224,0.1); }
+
+  .card-top-right { display: flex; align-items: flex-start; gap: 10px; flex-shrink: 0; }
+  .badge-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+
+  .job-map-wrap { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .job-map { width: 46px; height: 60px; display: block; }
+  .job-map circle { fill: var(--red); stroke: var(--map-stroke); stroke-width: 1; }
+  .job-map-label { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--text-mid); max-width: 56px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .desc-toggle { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; transition: color 0.15s; }
+  .desc-toggle:hover { color: var(--text-mid); }
+  .job-description-wrap { display: none; }
+  .job-description-wrap.expanded { display: block; }
+  .job-description-full { font-size: 13px; color: var(--text-mid); line-height: 1.6; white-space: pre-wrap; margin-top: 8px; }
+
+  /* ── ATS ──────────────────────────────────────────────────── */
+  .ats-badge { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; border: 1px solid; white-space: nowrap; }
+  .ats-badge.ats-good { color: #6ee7a0; border-color: rgba(110,231,160,0.35); background: rgba(110,231,160,0.1); }
+  .ats-badge.ats-mid  { color: #f5d36e; border-color: rgba(245,211,110,0.35); background: rgba(245,211,110,0.1); }
+  .ats-badge.ats-low  { color: #f08a8a; border-color: rgba(240,138,138,0.35); background: rgba(240,138,138,0.1); }
+  .ats-toggle { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; transition: color 0.15s; }
+  .ats-toggle:hover { color: var(--text-mid); }
+  .ats-panel-wrap { display: none; }
+  .ats-panel-wrap.expanded { display: block; margin-top: 8px; }
+  .ats-breakdown { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .ats-cat-row { display: flex; align-items: center; gap: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); }
+  .ats-cat-name { width: 70px; text-transform: capitalize; flex-shrink: 0; }
+  .ats-cat-bar { flex: 1; height: 6px; background: var(--bar-bg); border-radius: 3px; overflow: hidden; }
+  .ats-cat-fill { height: 100%; background: var(--blue); border-radius: 3px; }
+  .ats-cat-val { width: 44px; text-align: right; flex-shrink: 0; }
+  .ats-suggestions { display: flex; flex-direction: column; gap: 6px; }
+  .ats-suggestion { font-size: 12px; color: var(--text-mid); line-height: 1.5; padding: 6px 10px; border-radius: 4px; background: var(--overlay); border-left: 2px solid var(--border); }
+  .ats-suggestion.ats-prio-high   { border-left-color: #f08a8a; }
+  .ats-suggestion.ats-prio-medium { border-left-color: #f5d36e; }
+  .ats-suggestion.ats-prio-low    { border-left-color: #6ee7a0; }
+  .ats-prio-tag { font-family: 'IBM Plex Mono', monospace; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-right: 4px; }
+
+  /* ── resume upload ────────────────────────────────────────── */
+  .resume-upload-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .resume-status { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); }
+  .resume-item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; margin-top: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--overlay); }
+  .resume-item-name { font-size: 12px; color: var(--text); flex-shrink: 0; }
+  .resume-item-meta { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim); flex: 1; }
+  .btn-resume-remove { font-size: 10px; padding: 3px 8px; color: #f08a8a; border-color: rgba(240,138,138,0.35); }
+  .btn-resume-remove:hover { background: rgba(240,138,138,0.12); border-color: #f08a8a; }
+
+  /* ── settings sidebar ─────────────────────────────────────── */
+  .settings-panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--sidebar-w);
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 150;
+    padding: 20px 16px 32px;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.2s ease, padding 0.2s ease;
+  }
+
+  .settings-panel.collapsed {
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border-left: none;
+  }
+
+  .sidebar-toggle {
+    position: fixed;
+    top: 16px;
+    right: var(--sidebar-w);
+    z-index: 160;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-right: none;
+    color: var(--text-mid);
+    cursor: pointer;
+    padding: 10px 6px;
+    border-radius: 4px 0 0 4px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    transition: right 0.2s ease;
+  }
+
+  .sidebar-toggle:hover { color: var(--text); }
+
+  body.sidebar-collapsed .sidebar-toggle {
+    right: 0;
+  }
+
+  .settings-header {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 3px;
+    flex-shrink: 0;
+  }
+
+  .settings-hint {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+
+  .settings-section {
+    border-top: 1px solid var(--border);
+    padding: 14px 0;
+    flex-shrink: 0;
+  }
+
+  .settings-section-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-mid);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+  }
+
+  .settings-label {
+    display: block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 10px 0 4px;
+  }
+
+  .settings-textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 7px 9px;
+    border-radius: 4px;
+    resize: none;
+    overflow: hidden;
+    min-height: 32px;
+    line-height: 1.5;
+    word-wrap: break-word;
+  }
+  .settings-textarea:focus { outline: none; border-color: var(--border-hover); }
+
+  .settings-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 7px 9px;
+    border-radius: 4px;
+  }
+  .settings-input:focus { outline: none; border-color: var(--border-hover); }
+
+  .settings-schedule-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    flex-wrap: wrap;
+  }
+  .settings-schedule-row input[type="time"] {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 5px 7px;
+    border-radius: 4px;
+    color-scheme: inherit;
+  }
+  .settings-number {
+    width: 52px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 5px 7px;
+    border-radius: 4px;
+    text-align: center;
+  }
+
+  .source-checkboxes { display: flex; flex-direction: column; gap: 8px; }
+  .source-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-mid);
+    cursor: pointer;
+    user-select: none;
+  }
+  .source-checkbox input { accent-color: var(--accent); cursor: pointer; width: 13px; height: 13px; }
+  .source-checkbox.unchecked { color: var(--text-dim); }
+
+  .settings-actions-top {
+    flex-shrink: 0;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+
+  .btn-save {
+    width: 100%;
+    background: var(--accent);
+    color: var(--accent-text);
+    border: none;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: opacity 0.15s;
+  }
+  .btn-save:hover { opacity: 0.85; }
+
+  /* ── danger zone (restart) ───────────────────────────────── */
+  .settings-danger-zone {
+    margin-top: auto;
+    padding-top: 24px;
+    flex-shrink: 0;
+  }
+
+  .settings-danger-divider {
+    border-top: 2px dashed var(--border);
+    margin-bottom: 14px;
+    padding-top: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  .btn-restart {
+    width: 100%;
+    background: transparent;
+    border: 1px solid rgba(248,113,113,0.3);
+    color: var(--red);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 9px;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: background 0.15s, opacity 0.15s;
+  }
+
+  .btn-restart:hover { background: rgba(248,113,113,0.1); }
+  .btn-restart:disabled { opacity: 0.6; cursor: default; }
+
+  /* ── theme toggle ─────────────────────────────────────────── */
+  body, header, .notifications, .tabs, .job-card, .settings-panel, .sidebar-toggle {
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+
+  .theme-toggle {
+    position: relative;
+    width: 52px;
+    height: 26px;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--surface2);
+    cursor: pointer;
+    padding: 0;
+    box-shadow: inset 1px 1px 3px rgba(0,0,0,0.25);
+    transition: background 0.2s ease;
+  }
+  .theme-toggle .theme-ico {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    width: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--text-dim);
+    pointer-events: none;
+  }
+  .theme-toggle .theme-ico-sun { left: 1px; }
+  .theme-toggle .theme-ico-moon { right: 1px; }
+  .theme-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    transition: transform 0.22s ease, background 0.2s ease;
+  }
+  :root[data-theme="dark"] .theme-knob { transform: translateX(26px); }
+  :root[data-theme="light"] .theme-knob { transform: translateX(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">job_tracker</div>
+  <div class="header-right">
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light / dark mode" aria-label="Toggle light / dark mode">
+      <span class="theme-ico theme-ico-sun">☀</span>
+      <span class="theme-ico theme-ico-moon">☾</span>
+      <span class="theme-knob" id="themeKnob">🌙</span>
+    </button>
+    <span class="last-run" id="lastRun">—</span>
+    <div class="scan-controls" id="scanControls">
+      <button class="btn-scan-control btn-pause" id="pauseBtn" onclick="togglePauseScan()">⏸ Pause</button>
+      <button class="btn-scan-control btn-stop" id="stopBtn" onclick="stopScan()">■ Stop</button>
+    </div>
+    <button class="btn-bulk-ignore" id="bulkIgnoreBtn" onclick="bulkIgnoreNew()" title="Move every job still in 'New' to Ignored">✕ Ignore all New</button>
+    <button class="btn-refresh" id="refreshBtn" onclick="triggerRefresh()">↻ Refresh</button>
+  </div>
+</header>
+
+<div class="notifications" id="notifPanel">
+  <span class="notif-label">status</span>
+  <span class="notif-item info"><div class="dot dot-gray"></div>no runs yet</span>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(this, 'new')">New <span class="tab-count" id="count-new">0</span></div>
+  <div class="tab" onclick="switchTab(this, 'applying')">Applying <span class="tab-count" id="count-applying">0</span></div>
+  <div class="tab" onclick="switchTab(this, 'applied')">Applied <span class="tab-count" id="count-applied">0</span></div>
+  <div class="tab" onclick="switchTab(this, 'ignored')">Ignored <span class="tab-count" id="count-ignored">0</span></div>
+  <div class="tab" onclick="switchTab(this, 'all')">All <span class="tab-count" id="count-all">0</span></div>
+  <div class="type-filter">
+    <span>Type</span>
+    <select id="typeFilter" onchange="setTypeFilter(this.value)">
+      <option value="all">All</option>
+      <option value="Vollzeit">Vollzeit</option>
+      <option value="Werkstudent">Werkstudent</option>
+      <option value="Masterarbeit">Masterarbeit</option>
+      <option value="Praktikum">Praktikum</option>
+    </select>
+  </div>
+</div>
+
+<main id="jobList"></main>
+
+<!-- ── Settings sidebar ─────────────────────────────────────── -->
+<button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Toggle settings sidebar">⟩</button>
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-header">Settings</div>
+  <div class="settings-hint">Saved to config.toml on Save</div>
+
+  <div class="settings-actions-top">
+    <button class="btn-save" onclick="saveSettings()">Save</button>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Search</div>
+    <label class="settings-label">Keywords</label>
+    <textarea class="settings-textarea" id="cfg-keywords" placeholder="embedded, mechatronics, robotics"></textarea>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Sources</div>
+    <div class="source-checkboxes" id="sourceCheckboxes"></div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Schedule</div>
+    <label class="settings-schedule-row" style="margin-bottom:10px">
+      <input type="checkbox" id="cfg-schedule-enabled" style="accent-color:var(--accent);width:13px;height:13px">
+      Daily at
+      <input type="time" id="cfg-schedule-time" value="09:00">
+    </label>
+    <label class="settings-schedule-row">
+      Repeat every
+      <input type="number" class="settings-number" id="cfg-repeat-hours" min="0" max="24" step="1" value="0">
+      <span style="color:var(--text-mid)">h &nbsp;(0 = off)</span>
+    </label>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Notifications</div>
+    <label class="settings-label">ntfy.sh topic</label>
+    <input type="text" class="settings-input" id="cfg-ntfy-topic" placeholder="e.g. ms782-jobs-x7k2">
+    <div style="font-size:10px;color:var(--text-dim);margin-top:5px;font-family:'IBM Plex Mono',monospace;line-height:1.5">Subscribe to this topic in the ntfy app to receive push notifications</div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Resume</div>
+    <div style="font-size:10px;color:var(--text-dim);margin-bottom:10px;font-family:'IBM Plex Mono',monospace;line-height:1.5">Used for automatic fit-scoring. Keep multiple CVs (e.g. DE + EN)</div>
+    <div class="resume-upload-row">
+      <input type="file" id="resume-file" accept=".pdf,.docx" style="display:none" onchange="uploadResume()">
+      <button class="btn" onclick="document.getElementById('resume-file').click()">⇧ Upload PDF/DOCX</button>
+    </div>
+    <div class="resume-status" id="resume-status" style="margin-top:8px"></div>
+    <div id="resume-list"></div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Filters</div>
+    <label class="settings-label">Title must contain</label>
+    <textarea class="settings-textarea" id="cfg-title-must" placeholder="leave empty to allow any title"></textarea>
+    <label class="settings-label">Title blocklist</label>
+    <textarea class="settings-textarea" id="cfg-title-block" placeholder="e.g. senior, ausbildung"></textarea>
+    <label class="settings-label">Description must contain</label>
+    <textarea class="settings-textarea" id="cfg-desc-must" placeholder="leave empty to allow any"></textarea>
+    <label class="settings-label">Description blocklist</label>
+    <textarea class="settings-textarea" id="cfg-desc-block" placeholder="e.g. nato, military, drones"></textarea>
+  </div>
+
+  <div class="settings-danger-zone">
+    <div class="settings-danger-divider">Danger zone</div>
+    <button class="btn-restart" id="restartBtn" onclick="restartServer()">⟲ Restart server</button>
+  </div>
+</div>
+
+<script>
+// ── theme ───────────────────────────────────────────────────────
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+  const knob = document.getElementById('themeKnob');
+  if (knob) knob.textContent = theme === 'light' ? '☀' : '🌙';
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(cur === 'light' ? 'dark' : 'light');
+}
+// sync knob icon with the theme applied pre-paint in <head>
+applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+
+let currentTab = 'new';
+let currentJobs = [];
+let allJobs = [];
+let currentTypeFilter = 'all';
+let activeSources = [];
+let allSources = [];
+let notifExpanded = false;
+let expandedDescriptions = new Set();
+let expandedAts = new Set();
+
+// ── ATS ─────────────────────────────────────────────────────────
+function atsScoreClass(score) {
+  if (score >= 70) return 'ats-good';
+  if (score >= 40) return 'ats-mid';
+  return 'ats-low';
+}
+
+function renderAtsBadge(job) {
+  if (job.ats_score === null || job.ats_score === undefined) return '';
+  return `<span class="ats-badge ${atsScoreClass(job.ats_score)}" title="Resume-fit score">${job.ats_score}% fit</span>`;
+}
+
+function renderAtsPanel(job) {
+  if (job.ats_score === null || job.ats_score === undefined || !job.ats_report) return '';
+  let report;
+  try { report = JSON.parse(job.ats_report); } catch (e) { return ''; }
+  const isExpanded = expandedAts.has(job.id);
+
+  const suggestions = (report.suggestions || []).map(s =>
+    `<div class="ats-suggestion ats-prio-${s.priority}">
+       <span class="ats-prio-tag">${s.priority}</span> ${s.message}
+     </div>`
+  ).join('') || '<div class="ats-suggestion">No specific suggestions — looks like a solid match.</div>';
+
+  const breakdown = report.breakdown || {};
+  const maximums = breakdown.maximums || {};
+  const cats = ['keyword', 'skills', 'sections', 'projects', 'experience', 'education', 'formatting'];
+  const breakdownHtml = cats.map(c =>
+    `<div class="ats-cat-row">
+       <span class="ats-cat-name">${c}</span>
+       <div class="ats-cat-bar"><div class="ats-cat-fill" style="width:${maximums[c] ? (breakdown[c] / maximums[c] * 100) : 0}%"></div></div>
+       <span class="ats-cat-val">${breakdown[c] ?? 0}/${maximums[c] ?? 0}</span>
+     </div>`
+  ).join('');
+
+  return `<div class="ats-toggle" onclick="toggleAts(${job.id})">
+       <span id="ats-arrow-${job.id}">${isExpanded ? '▾' : '▸'}</span>
+       <span id="ats-label-${job.id}">${isExpanded ? 'Hide resume-fit details' : 'Show resume-fit details'}</span>
+     </div>
+     <div class="ats-panel-wrap ${isExpanded ? 'expanded' : ''}" id="ats-wrap-${job.id}">
+       <div class="ats-breakdown">${breakdownHtml}</div>
+       <div class="ats-suggestions">${suggestions}</div>
+     </div>`;
+}
+
+function toggleAts(id) {
+  const wrap = document.getElementById('ats-wrap-' + id);
+  const arrow = document.getElementById('ats-arrow-' + id);
+  const label = document.getElementById('ats-label-' + id);
+  if (!wrap) return;
+  const expanded = wrap.classList.toggle('expanded');
+  arrow.textContent = expanded ? '▾' : '▸';
+  label.textContent = expanded ? 'Hide resume-fit details' : 'Show resume-fit details';
+  if (expanded) expandedAts.add(id); else expandedAts.delete(id);
+}
+
+// ── job type tags ────────────────────────────────────────────────
+// Multi-word / hyphenated phrases are matched as plain substrings; single
+// words are matched on word boundaries (so "intern" doesn't match
+// "international", but "praktikum" still matches "Pflichtpraktikum" since
+// German compounds have no internal boundary for \b to catch).
+const TYPE_TAGS = [
+  { label: 'Werkstudent',  match: ['werkstudent', 'working student', 'working-student'] },
+  { label: 'Masterarbeit', match: ['masterarbeit', 'abschlussarbeit', 'diplomarbeit', 'thesis', 'master thesis'] },
+  { label: 'Praktikum',    match: ['praktikum', 'praktikant', 'internship', 'intern'] },
+  { label: 'Vollzeit',     match: ['vollzeit', 'full-time', 'full time', 'fulltime'] },
+];
+
+function _typeMatch(text, kw) {
+  if (kw.includes(' ') || kw.includes('-')) return text.includes(kw);
+  return new RegExp('\\b' + kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(text);
+}
+
+// A job can belong to more than one type at once (e.g. a posting offering
+// both a Praktikum and a Werkstudent position) — returns all matching tags,
+// or ['Vollzeit'] if none match.
+function getTypeTags(title) {
+  const t = (title || '').toLowerCase();
+  const tags = TYPE_TAGS.filter(tag => tag.match.some(m => _typeMatch(t, m))).map(tag => tag.label);
+  return tags.length ? tags : ['Vollzeit'];
+}
+
+// ── mini map ─────────────────────────────────────────────────────
+const CITY_COORDS = {
+  'berlin': [52.52, 13.41], 'hamburg': [53.55, 9.99],
+  'munich': [48.14, 11.58], 'münchen': [48.14, 11.58], 'muenchen': [48.14, 11.58],
+  'cologne': [50.94, 6.96], 'köln': [50.94, 6.96], 'koeln': [50.94, 6.96],
+  'frankfurt': [50.11, 8.68], 'stuttgart': [48.78, 9.18],
+  'düsseldorf': [51.23, 6.78], 'duesseldorf': [51.23, 6.78],
+  'dortmund': [51.51, 7.47], 'essen': [51.46, 7.01], 'leipzig': [51.34, 12.37],
+  'bremen': [53.08, 8.81], 'bremerhaven': [53.55, 8.58],
+  'dresden': [51.05, 13.74], 'hannover': [52.37, 9.73], 'hanover': [52.37, 9.73],
+  'nuremberg': [49.45, 11.08], 'nürnberg': [49.45, 11.08], 'nuernberg': [49.45, 11.08],
+  'duisburg': [51.43, 6.76], 'bochum': [51.48, 7.22], 'wuppertal': [51.26, 7.18],
+  'bielefeld': [52.02, 8.53], 'bonn': [50.74, 7.10],
+  'münster': [51.96, 7.63], 'muenster': [51.96, 7.63],
+  'karlsruhe': [49.01, 8.40], 'mannheim': [49.49, 8.47],
+  'augsburg': [48.37, 10.90], 'wiesbaden': [50.08, 8.24],
+  'mönchengladbach': [51.18, 6.44], 'moenchengladbach': [51.18, 6.44],
+  'gelsenkirchen': [51.52, 7.10], 'aachen': [50.78, 6.08],
+  'braunschweig': [52.27, 10.52], 'kiel': [54.32, 10.13],
+  'chemnitz': [50.83, 12.92], 'halle': [51.48, 11.97], 'magdeburg': [52.13, 11.64],
+  'freiburg': [47.99, 7.85], 'krefeld': [51.34, 6.57], 'mainz': [50.00, 8.27],
+  'erfurt': [50.98, 11.03], 'rostock': [54.09, 12.13], 'kassel': [51.31, 9.50],
+  'saarbrücken': [49.23, 7.00], 'saarbruecken': [49.23, 7.00],
+  'potsdam': [52.40, 13.06], 'oldenburg': [53.14, 8.21],
+  'heidelberg': [49.41, 8.71], 'darmstadt': [49.87, 8.65],
+  'regensburg': [49.02, 12.10], 'würzburg': [49.79, 9.93], 'wuerzburg': [49.79, 9.93],
+  'ulm': [48.40, 9.99], 'ingolstadt': [48.77, 11.42], 'heilbronn': [49.14, 9.22],
+  'paderborn': [51.72, 8.75], 'fürth': [49.48, 11.00], 'fuerth': [49.48, 11.00],
+  'wolfsburg': [52.42, 10.79], 'offenbach': [50.10, 8.77],
+  'göttingen': [51.53, 9.94], 'goettingen': [51.53, 9.94],
+  'koblenz': [50.35, 7.59], 'jena': [50.93, 11.59], 'siegen': [50.87, 8.02],
+  'trier': [49.76, 6.64], 'flensburg': [54.78, 9.43],
+  'landshut': [48.54, 12.15], 'garching': [48.25, 11.65],
+  'weßling': [48.08, 11.25], 'wessling': [48.08, 11.25],
+  'lübeck': [53.87, 10.69], 'luebeck': [53.87, 10.69],
+  'bamberg': [49.90, 10.90], 'bayreuth': [49.95, 11.58],
+  'osnabrück': [52.28, 8.05], 'osnabrueck': [52.28, 8.05],
+  'pforzheim': [48.89, 8.70], 'reutlingen': [48.49, 9.21],
+  'erlangen': [49.60, 11.01], 'tübingen': [48.52, 9.06], 'tuebingen': [48.52, 9.06],
+  'konstanz': [47.66, 9.18], 'ravensburg': [47.78, 9.61],
+  'friedrichshafen': [47.65, 9.48], 'rosenheim': [47.86, 12.13],
+};
+
+const PLZ_REGION_COORDS = {
+  '0': [51.0, 13.0], '1': [52.4, 13.3], '2': [53.3, 9.5],
+  '3': [52.3, 9.8],  '4': [51.4, 7.2],  '5': [50.7, 7.0],
+  '6': [50.0, 8.6],  '7': [48.7, 9.3],  '8': [48.2, 11.7], '9': [49.6, 11.2],
+};
+
+function geocodeLocation(location) {
+  if (!location) return null;
+  const low = location.toLowerCase();
+  for (const city in CITY_COORDS) {
+    if (low.includes(city)) return CITY_COORDS[city];
+  }
+  const plz = location.match(/\b(\d{5})\b/);
+  if (plz) return PLZ_REGION_COORDS[plz[1][0]] || null;
+  return null;
+}
+
+const GERMANY_MAP_W = 100, GERMANY_MAP_H = 132;
+const GERMANY_LON_MIN = 5.5, GERMANY_LON_MAX = 15.2;
+const GERMANY_LAT_MIN = 47.2, GERMANY_LAT_MAX = 55.1;
+
+function renderMiniMap(location) {
+  const coords = geocodeLocation(location);
+  const label = (location || 'Location not specified').replace(/"/g, '&quot;');
+  // Always render the map (even without a marker) so every card has the
+  // same layout — otherwise cards without a recognized location shift the
+  // badge stack and break alignment across the list.
+  const marker = coords
+    ? (() => {
+        const [lat, lon] = coords;
+        const x = ((lon - GERMANY_LON_MIN) / (GERMANY_LON_MAX - GERMANY_LON_MIN) * GERMANY_MAP_W).toFixed(1);
+        const y = ((GERMANY_LAT_MAX - lat) / (GERMANY_LAT_MAX - GERMANY_LAT_MIN) * GERMANY_MAP_H).toFixed(1);
+        return `<circle cx="${x}" cy="${y}" r="3.5"></circle>`;
+      })()
+    : '';
+  return `<div class="job-map-wrap" title="${label}">
+    <svg class="job-map" viewBox="0 0 ${GERMANY_MAP_W} ${GERMANY_MAP_H}" xmlns="http://www.w3.org/2000/svg">
+      <image href="/static/germany.png" x="0" y="0" width="${GERMANY_MAP_W}" height="${GERMANY_MAP_H}"/>
+      ${marker}
+    </svg>
+  </div>`;
+}
+
+// ── jobs ─────────────────────────────────────────────────────────
+async function loadJobs() {
+  const resp = await fetch(`/api/jobs?status=${currentTab}`);
+  const data = await resp.json();
+  allJobs = data.jobs;
+  renderJobs(allJobs);
+  updateCounts(data.counts);
+}
+
+async function loadLogs() {
+  const resp = await fetch('/api/logs');
+  const data = await resp.json();
+  renderNotifs(data.logs, data.last_run, data.last_run_duration_sec);
+}
+
+function formatFoundAt(s) {
+  if (!s) return '';
+  // SQLite's datetime('now') stores UTC with no timezone suffix — append
+  // "Z" so Date parses it as UTC and converts to the viewer's local time.
+  const d = new Date(s.replace(' ', 'T') + 'Z');
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleString();
+}
+
+function formatDuration(sec) {
+  if (sec == null) return '';
+  sec = Math.round(sec);
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s ? `${m}m ${s}s` : `${m}m`;
+}
+
+// ── sources ──────────────────────────────────────────────────────
+async function loadSources() {
+  try {
+    const resp = await fetch('/api/config');
+    const data = await resp.json();
+    activeSources = data.sources || [];
+    allSources = data.all_sources || activeSources;
+  } catch (e) {
+    activeSources = []; allSources = [];
+  }
+  renderSourceCheckboxes();
+}
+
+function renderSourceCheckboxes() {
+  const container = document.getElementById('sourceCheckboxes');
+  if (!container) return;
+  container.innerHTML = allSources.map(src => {
+    const checked = activeSources.includes(src);
+    return `<label class="source-checkbox ${checked ? '' : 'unchecked'}">
+      <input type="checkbox" value="${src}" ${checked ? 'checked' : ''} onchange="toggleSource('${src}', this.checked)">
+      ${src}
+    </label>`;
+  }).join('');
+}
+
+async function toggleSource(source, enabled) {
+  let updated = activeSources.slice();
+  if (enabled && !updated.includes(source)) updated.push(source);
+  else if (!enabled) updated = updated.filter(s => s !== source);
+  activeSources = updated;
+  renderSourceCheckboxes();
+  try {
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ sources: { enabled: activeSources } })
+    });
+  } catch (e) { console.error('Failed to save source selection', e); }
+}
+
+// ── settings panel ───────────────────────────────────────────────
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+async function loadSettings() {
+  try {
+    const resp = await fetch('/api/config');
+    const data = await resp.json();
+    const search = data.search || {};
+    const filters = data.filters || {};
+    const schedule = data.schedule || {};
+    const notifs = data.notifications || {};
+
+    activeSources = data.sources || [];
+    allSources = data.all_sources || activeSources;
+    renderSourceCheckboxes();
+
+    setTA('cfg-keywords',   (search.keywords || []).join(', '));
+    setTA('cfg-title-must', (filters.title_must_contain || []).join(', '));
+    setTA('cfg-title-block',(filters.title_blocklist || []).join(', '));
+    setTA('cfg-desc-must',  (filters.description_must_contain || []).join(', '));
+    setTA('cfg-desc-block', (filters.description_blocklist || []).join(', '));
+
+    document.getElementById('cfg-schedule-enabled').checked = !!schedule.enabled;
+    document.getElementById('cfg-schedule-time').value = schedule.time || '09:00';
+    document.getElementById('cfg-repeat-hours').value = schedule.repeat_every_hours || 0;
+    document.getElementById('cfg-ntfy-topic').value = notifs.ntfy_topic || '';
+
+    loadResumeStatus();
+  } catch (e) { console.error('Failed to load settings', e); }
+}
+
+function setTA(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = value;
+  autoResize(el);
+}
+
+async function saveSettings() {
+  const payload = {
+    search: {
+      keywords: parseList(document.getElementById('cfg-keywords').value),
+    },
+    filters: {
+      title_must_contain:     parseList(document.getElementById('cfg-title-must').value),
+      title_blocklist:        parseList(document.getElementById('cfg-title-block').value),
+      description_must_contain: parseList(document.getElementById('cfg-desc-must').value),
+      description_blocklist:  parseList(document.getElementById('cfg-desc-block').value),
+    },
+    schedule: {
+      enabled: document.getElementById('cfg-schedule-enabled').checked,
+      time: document.getElementById('cfg-schedule-time').value || '09:00',
+      repeat_every_hours: parseInt(document.getElementById('cfg-repeat-hours').value) || 0,
+    },
+    notifications: {
+      ntfy_topic: document.getElementById('cfg-ntfy-topic').value.trim(),
+    }
+  };
+
+  const saveBtn = document.querySelector('.btn-save');
+  const orig = saveBtn.textContent;
+  saveBtn.textContent = 'Saving…';
+  saveBtn.disabled = true;
+
+  try {
+    const resp = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    saveBtn.textContent = 'Saved ✓';
+    setTimeout(() => { saveBtn.textContent = orig; saveBtn.disabled = false; }, 1500);
+
+    if (data && typeof data.removed === 'number') {
+      if (data.counts) updateCounts(data.counts);
+      loadJobs();
+      if (data.removed > 0) {
+        const panel = document.getElementById('notifPanel');
+        panel.innerHTML = `
+          <span class="notif-label">filters</span>
+          <span class="notif-item info">
+            <div class="dot dot-yellow"></div>
+            re-applied filters — removed ${data.removed} job${data.removed === 1 ? '' : 's'} that no longer match
+          </span>`;
+        setTimeout(updateStickyOffsets, 50);
+      }
+    }
+  } catch (e) {
+    saveBtn.textContent = 'Error';
+    setTimeout(() => { saveBtn.textContent = orig; saveBtn.disabled = false; }, 1500);
+  }
+}
+
+// ── resume ───────────────────────────────────────────────────────
+async function loadResumeStatus() {
+  const status = document.getElementById('resume-status');
+  const list = document.getElementById('resume-list');
+  try {
+    const resp = await fetch('/api/resume');
+    const data = await resp.json();
+    const resumes = data.resumes || [];
+    if (resumes.length) {
+      const totalWords = resumes.reduce((sum, r) => sum + r.word_count, 0);
+      status.textContent = `${resumes.length} resume${resumes.length > 1 ? 's' : ''} on file — ${totalWords} words`;
+      list.innerHTML = resumes.map(r => `
+        <div class="resume-item">
+          <span class="resume-item-name">${r.filename}</span>
+          <span class="resume-item-meta">${r.word_count} words</span>
+          <button class="btn btn-resume-remove" onclick="removeResume(${r.id})">✕</button>
+        </div>`).join('');
+    } else {
+      status.textContent = 'No resumes — jobs will not be fit-scored';
+      list.innerHTML = '';
+    }
+  } catch (e) { status.textContent = 'Could not check resume status'; }
+}
+
+async function uploadResume() {
+  const input = document.getElementById('resume-file');
+  const status = document.getElementById('resume-status');
+  const file = input.files && input.files[0];
+  if (!file) return;
+  status.textContent = `Uploading ${file.name}…`;
+  const form = new FormData();
+  form.append('resume', file);
+  try {
+    const resp = await fetch('/api/resume', { method: 'POST', body: form });
+    const data = await resp.json();
+    if (data.ok) {
+      status.textContent = `Added ${data.filename} — scoring jobs…`;
+      await loadResumeStatus();
+      setTimeout(loadJobs, 4000);
+    } else {
+      status.textContent = `✕ ${data.error || 'Upload failed'}`;
+    }
+  } catch (e) { status.textContent = '✕ Upload failed — try again'; }
+  input.value = '';
+}
+
+async function removeResume(id) {
+  try {
+    await fetch('/api/resume/' + id, { method: 'DELETE' });
+    await loadResumeStatus();
+    setTimeout(loadJobs, 4000);
+  } catch (e) {}
+}
+
+// ── type filter ───────────────────────────────────────────────────
+function setTypeFilter(value) {
+  currentTypeFilter = value;
+  renderJobs(allJobs);
+}
+
+function updateCounts(counts) {
+  document.getElementById('count-new').textContent = counts.new || 0;
+  document.getElementById('count-applying').textContent = counts.applying || 0;
+  document.getElementById('count-applied').textContent = counts.applied || 0;
+  document.getElementById('count-ignored').textContent = counts.ignored || 0;
+  document.getElementById('count-all').textContent = counts.all || 0;
+}
+
+// ── status bar ────────────────────────────────────────────────────
+function toggleNotifDetails() {
+  notifExpanded = !notifExpanded;
+  const panel = document.getElementById('notifPanel');
+  const details = document.getElementById('notifDetails');
+  const toggle = document.getElementById('notifToggle');
+  if (details) details.classList.toggle('expanded', notifExpanded);
+  if (toggle) toggle.textContent = notifExpanded ? '▾' : '▸';
+  if (panel) panel.classList.toggle('has-expanded', notifExpanded);
+  setTimeout(updateStickyOffsets, 50);
+}
+
+function renderNotifs(logs, lastRun, lastRunDurationSec) {
+  const panel = document.getElementById('notifPanel');
+  const lastRunEl = document.getElementById('lastRun');
+  const durationStr = formatDuration(lastRunDurationSec);
+  if (lastRun) lastRunEl.textContent = 'last run: ' + lastRun + (durationStr ? ` (${durationStr})` : '');
+  const lastRunLabel = lastRun ? `last run — ${lastRun}${durationStr ? ` (${durationStr})` : ''}` : 'last run';
+  if (!logs || !logs.length) {
+    panel.classList.remove('has-expanded');
+    panel.innerHTML = `<span class="notif-label">${lastRunLabel}</span><span class="notif-item info"><div class="dot dot-gray"></div>no runs yet</span>`;
+    return;
+  }
+  const okCount = logs.filter(l => l.status === 'ok').length;
+  const badCount = logs.filter(l => l.status === 'error').length;
+  const summaryDot = badCount === 0 ? (okCount === logs.length ? 'dot-green' : 'dot-yellow') : (okCount === 0 ? 'dot-red' : 'dot-yellow');
+  let detailsHtml = '';
+  logs.forEach(log => {
+    const dotClass = log.status === 'ok' ? 'dot-green' : (log.status === 'stopped' ? 'dot-yellow' : 'dot-red');
+    const cls = log.status === 'ok' ? 'success' : (log.status === 'stopped' ? 'info' : 'error');
+    detailsHtml += `<div class="notif-item ${cls}"><div class="dot ${dotClass}"></div>${log.source} — ${log.message || log.status}</div>`;
+  });
+  panel.classList.toggle('has-expanded', notifExpanded);
+  panel.innerHTML = `
+    <span class="notif-label">${lastRunLabel}</span>
+    <div class="notif-summary" onclick="toggleNotifDetails()">
+      <div class="dot ${summaryDot}"></div>
+      <span>${okCount}/${logs.length} sources ok</span>
+      <span class="notif-toggle" id="notifToggle">${notifExpanded ? '▾' : '▸'}</span>
+    </div>
+    <div class="notif-details ${notifExpanded ? 'expanded' : ''}" id="notifDetails">${detailsHtml}</div>`;
+  setTimeout(updateStickyOffsets, 50);
+}
+
+// ── job cards ─────────────────────────────────────────────────────
+function renderJobs(jobs) {
+  const list = document.getElementById('jobList');
+  const filtered = currentTypeFilter === 'all' ? jobs : jobs.filter(job => getTypeTags(job.title).includes(currentTypeFilter));
+  currentJobs = filtered;
+  if (!filtered.length) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">○</div>No jobs here.</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(job => {
+    const typeTags = getTypeTags(job.title);
+    const isExpanded = expandedDescriptions.has(job.id);
+    const descBlock = job.description
+      ? `<div class="desc-toggle" onclick="toggleDescription(${job.id})">
+           <span id="desc-arrow-${job.id}">${isExpanded ? '▾' : '▸'}</span>
+           <span id="desc-label-${job.id}">${isExpanded ? 'Hide description' : 'Show description'}</span>
+         </div>
+         <div class="job-description-wrap ${isExpanded ? 'expanded' : ''}" id="desc-wrap-${job.id}">
+           <div class="job-description-full">${job.description}</div>
+         </div>`
+      : `<div class="desc-unavailable">— description unavailable</div>`;
+    return `
+    <div class="job-card ${job.status}" id="card-${job.id}">
+      <div class="card-top">
+        <div>
+          <div class="job-title">${job.title}</div>
+          <div class="job-company">${job.company}${job.location ? ' · ' + job.location : ''}</div>
+        </div>
+        <div class="card-top-right">
+          <div class="badge-stack">
+            <span class="source-badge source-${job.source}">${job.source}</span>
+            ${typeTags.map(tag => `<span class="type-badge type-${tag}">${tag}</span>`).join('')}
+            ${renderAtsBadge(job)}
+          </div>
+          ${renderMiniMap(job.location)}
+        </div>
+      </div>
+      ${descBlock}
+      ${renderAtsPanel(job)}
+      <div class="card-actions">
+        <div class="action-buttons">
+          <button class="btn btn-icon btn-applying ${job.status === 'applying' ? 'active' : ''}" onclick="setStatus(${job.id}, 'applying')" title="Applying">⏳</button>
+          <button class="btn btn-icon btn-applied ${job.status === 'applied' ? 'active' : ''}" onclick="setStatus(${job.id}, 'applied')" title="Applied">✓</button>
+          <button class="btn btn-icon btn-ignore ${job.status === 'ignored' ? 'active' : ''}" onclick="setStatus(${job.id}, 'ignored')" title="Ignore">✕</button>
+          <button class="btn btn-icon btn-copy" onclick="copyJob(${job.id}, this)" title="Copy title + description">⧉</button>
+          <a href="${job.url}" target="_blank" rel="noopener" class="btn btn-icon btn-open" title="Open">↗</a>
+        </div>
+        <div class="card-right">
+          <span class="found-at">${formatFoundAt(job.date_found)}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleDescription(id) {
+  const wrap = document.getElementById('desc-wrap-' + id);
+  const arrow = document.getElementById('desc-arrow-' + id);
+  const label = document.getElementById('desc-label-' + id);
+  if (!wrap) return;
+  const expanded = wrap.classList.toggle('expanded');
+  arrow.textContent = expanded ? '▾' : '▸';
+  label.textContent = expanded ? 'Hide description' : 'Show description';
+  if (expanded) expandedDescriptions.add(id); else expandedDescriptions.delete(id);
+}
+
+async function copyJob(id, btn) {
+  const job = currentJobs.find(j => j.id === id);
+  if (!job) return;
+  const text = `${job.title}\n\n${job.description || ''}`;
+  const flash = ok => {
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.textContent = ok ? '✓ Copied' : '✕ Copy failed';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  };
+  try { await navigator.clipboard.writeText(text); flash(true); return; } catch (e) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta); flash(ok);
+  } catch (e) { flash(false); }
+}
+
+function parseList(value) {
+  return value.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+// ── status / scan controls ────────────────────────────────────────
+async function setStatus(id, status) {
+  const card = document.getElementById('card-' + id);
+  const currentStatus = card.className.includes(status) ? 'new' : status;
+  await fetch('/api/status', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id, status: currentStatus})
+  });
+  loadJobs();
+}
+
+async function bulkIgnoreNew() {
+  const newCount = parseInt(document.getElementById('count-new').textContent || '0', 10);
+  if (!newCount) return;
+  if (!confirm(`Move all ${newCount} job${newCount === 1 ? '' : 's'} still in "New" to Ignored?`)) return;
+  const btn = document.getElementById('bulkIgnoreBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '✕ Ignoring...'; }
+  try {
+    const resp = await fetch('/api/status/bulk-ignore-new', { method: 'POST' });
+    const data = await resp.json();
+    if (data.counts) updateCounts(data.counts);
+    if (currentTab === 'new' || currentTab === 'ignored' || currentTab === 'all') loadJobs();
+  } catch (e) { console.error('Bulk ignore failed', e); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '✕ Ignore all New'; } }
+}
+
+function fmtElapsed(startedAt) {
+  if (!startedAt) return '00:00';
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
+  return `${Math.floor(secs/60).toString().padStart(2,'0')}:${(secs%60).toString().padStart(2,'0')}`;
+}
+
+function renderProgress(p) {
+  const panel = document.getElementById('notifPanel');
+  panel.classList.remove('has-expanded');
+  const elapsed = fmtElapsed(p.started_at);
+  let what = 'starting...';
+  if (p.source) {
+    what = p.source;
+    if (p.job_index) { what += `, job ${p.job_index}`; if (p.job_title) what += `: ${p.job_title}`; }
+    else if (p.keyword) { what += `: ${p.keyword}`; }
+  }
+  const paused = !!p.paused;
+  const dotClass = paused ? 'dot-yellow' : 'dot-green dot-pulse';
+  const verb = paused ? 'paused — ' : 'searching: ';
+  panel.innerHTML = `
+    <span class="notif-label">status</span>
+    <span class="notif-item info">
+      <div class="dot ${dotClass}"></div>
+      (time elapsed: ${elapsed}) ${verb}${what}${paused ? '' : '...'}
+    </span>`;
+  syncScanControls(p);
+}
+
+function syncScanControls(p) {
+  const controls = document.getElementById('scanControls');
+  const pauseBtn = document.getElementById('pauseBtn');
+  if (!controls || !pauseBtn) return;
+  controls.classList.add('visible');
+  if (p.paused) { pauseBtn.textContent = '▶ Resume'; pauseBtn.classList.add('active'); }
+  else { pauseBtn.textContent = '⏸ Pause'; pauseBtn.classList.remove('active'); }
+}
+
+function hideScanControls() {
+  const controls = document.getElementById('scanControls');
+  if (controls) controls.classList.remove('visible');
+}
+
+async function togglePauseScan() {
+  const pauseBtn = document.getElementById('pauseBtn');
+  const wantPause = !pauseBtn.classList.contains('active');
+  try {
+    await fetch('/api/scan/pause', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ paused: wantPause }) });
+  } catch (e) { console.error('Failed to toggle pause', e); }
+}
+
+async function stopScan() {
+  const stopBtn = document.getElementById('stopBtn');
+  if (stopBtn) { stopBtn.disabled = true; stopBtn.textContent = '■ Stopping...'; }
+  try { await fetch('/api/scan/stop', { method: 'POST' }); }
+  catch (e) { console.error('Failed to stop scan', e); }
+}
+
+let _watchingProgress = false;
+
+function watchProgress(btn) {
+  if (_watchingProgress) return;
+  _watchingProgress = true;
+  if (btn) { btn.textContent = '↻ Running...'; btn.classList.add('loading'); btn.disabled = true; }
+  let pollTimer = null, jobsTimer = null;
+  const stop = () => {
+    if (pollTimer) clearInterval(pollTimer);
+    if (jobsTimer) clearInterval(jobsTimer);
+    _watchingProgress = false;
+    if (btn) { btn.textContent = '↻ Refresh'; btn.classList.remove('loading'); btn.disabled = false; }
+    hideScanControls();
+    const stopBtn = document.getElementById('stopBtn');
+    if (stopBtn) { stopBtn.disabled = false; stopBtn.textContent = '■ Stop'; }
+    const pauseBtn = document.getElementById('pauseBtn');
+    if (pauseBtn) { pauseBtn.textContent = '⏸ Pause'; pauseBtn.classList.remove('active'); }
+  };
+  jobsTimer = setInterval(loadJobs, 5000);
+  pollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch('/api/progress');
+      const p = await resp.json();
+      if (p.running) { renderProgress(p); }
+      else { stop(); renderNotifs(p.logs, p.last_run, p.last_run_duration_sec); updateCounts(p.counts); loadJobs(); }
+    } catch (e) { stop(); }
+  }, 1000);
+}
+
+async function triggerRefresh() {
+  const btn = document.getElementById('refreshBtn');
+  try {
+    const startResp = await fetch('/api/refresh', {method: 'POST'});
+    if (startResp.status === 409) console.warn('Scrape already running');
+    watchProgress(btn);
+  } catch(e) { console.error(e); }
+}
+
+// ── sidebar collapse ────────────────────────────────────────────
+function toggleSidebar() {
+  const collapsed = document.body.classList.toggle('sidebar-collapsed');
+  document.getElementById('settingsPanel').classList.toggle('collapsed', collapsed);
+  document.getElementById('sidebarToggle').textContent = collapsed ? '⟨' : '⟩';
+  localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+  setTimeout(updateStickyOffsets, 250);
+}
+
+// ── restart server ───────────────────────────────────────────────
+async function restartServer() {
+  if (!confirm('Restart the server now? Any in-progress scan will be stopped, and the page will need a moment before it responds again.')) return;
+  const btn = document.getElementById('restartBtn');
+  btn.disabled = true;
+  btn.textContent = 'Restarting…';
+  try {
+    await fetch('/api/restart', { method: 'POST' });
+  } catch (e) {
+    // expected — the server process is restarting and the connection drops
+  }
+  setTimeout(() => location.reload(), 3000);
+}
+
+function switchTab(el, tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  currentTab = tab;
+  loadJobs();
+}
+
+function updateStickyOffsets() {
+  const header = document.querySelector('header');
+  const notif = document.getElementById('notifPanel');
+  const tabs = document.querySelector('.tabs');
+  if (!header || !notif || !tabs) return;
+  const headerH = header.offsetHeight;
+  notif.style.top = headerH + 'px';
+  tabs.style.top = (headerH + notif.offsetHeight) + 'px';
+}
+window.addEventListener('resize', updateStickyOffsets);
+
+// auto-resize for all textareas in settings
+document.querySelectorAll('.settings-textarea').forEach(ta => {
+  ta.addEventListener('input', () => autoResize(ta));
+});
+
+// keyboard shortcuts: Ctrl+S = save settings, Ctrl+R = trigger refresh
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === 's' || e.key === 'S') {
+    e.preventDefault();
+    saveSettings();
+  } else if (e.key === 'r' || e.key === 'R') {
+    e.preventDefault();
+    triggerRefresh();
+  } else if (e.key === 'e' || e.key === 'E') {
+    e.preventDefault();
+    toggleSidebar();
+  }
+});
+
+// init
+if (localStorage.getItem('sidebarCollapsed') === '1') {
+  document.body.classList.add('sidebar-collapsed');
+  document.getElementById('settingsPanel').classList.add('collapsed');
+  document.getElementById('sidebarToggle').textContent = '⟨';
+}
+loadJobs();
+loadLogs();
+loadSettings();
+updateStickyOffsets();
+setTimeout(updateStickyOffsets, 300);
+
+(async function resumeProgressIfRunning() {
+  try {
+    const resp = await fetch('/api/progress');
+    const p = await resp.json();
+    if (p.running) watchProgress(document.getElementById('refreshBtn'));
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>

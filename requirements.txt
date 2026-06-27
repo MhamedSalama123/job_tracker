@@ -1,0 +1,9 @@
+flask
+browser-cookie3
+requests
+beautifulsoup4
+toml
+playwright
+pypdf
+python-docx
+pillow

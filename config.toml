@@ -1,0 +1,31 @@
+[search]
+lookback_hours = 24
+keywords = []
+
+[sources]
+enabled = [ "stepstone", "indeed", "linkedin",]
+
+[filters]
+title_must_contain = [ "Werkstudent Softwareentwicklung", "Werkstudent Webentwicklung", "Werkstudent Frontend", "Werkstudent Java", "Werkstudent React", "Working Student Software",]
+title_blocklist = [ "senior", "lead", "manager", "head", "director", "principal", "sales", "vertrieb", "ausbildung",]
+description_must_contain = []
+description_blocklist = [ "mehrjährige berufserfahrung", "senior",]
+
+[schedule]
+enabled = true
+time = "09:00"
+repeat_every_hours = 24
+
+[browser]
+profile = "edge"
+
+[proxies]
+enabled = false
+url = ""
+
+[output]
+port = 5000
+auto_open = true
+
+[notifications]
+ntfy_topic = "ms782-jobs-x7k2"

@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Local database (contains personal data: resumes, scraped jobs)
+*.db
+*.sqlite
+*.sqlite3
+jobs.db
+
+# Uploaded resumes / personal documents
+*.pdf
+*.docx
+*.doc
+
+# Exported browser session cookies (sensitive auth tokens) — keep the README
+scraper/cookies/*.json
+scraper/cookies/*.txt
+!scraper/cookies/README.txt
+
+# Environment / secrets
+.env
+*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
